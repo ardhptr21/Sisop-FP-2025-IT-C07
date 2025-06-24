@@ -115,7 +115,7 @@ Struktur folder:
 
 ## Video Menjalankan Program
 
-...
+![Akses video](./assets/demo.mp4)
 
 ## Daftar Pustaka
 
