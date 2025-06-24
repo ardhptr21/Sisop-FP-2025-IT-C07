@@ -183,5 +183,7 @@ https://github.com/user-attachments/assets/ee0e1e3f-8728-4cb7-81e2-b7122c9827d9
 ## Daftar Pustaka
 
 Vangoor, B. K. R., Tarasov, V., & Zadok, E. (2017). To FUSE or Not to FUSE: Performance of User-Space File Systems. Proceedings of the 15th USENIX Conference on File and Storage Technologies (FAST '17).
+
 Cho, K.-J., Choi, J., Kwon, H., & Kim, J.-S. (2024). RFUSE: Modernizing Userspace Filesystem Framework through Scalable Kernel-Userspace Communication. Proceedings of the 22nd USENIX Conference on File and Storage Technologies (FAST '24).
+
 Zhang, J., Ren, Y., & Kannan, S. (2022). FusionFS: Fusing I/O Operations using CISCOps in Firmware File Systems. Proceedings of the 20th USENIX Conference on File and Storage Technologies (FAST '22).
