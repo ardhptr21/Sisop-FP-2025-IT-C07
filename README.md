@@ -62,14 +62,13 @@ Fungsi `getattr` pada FUSE digunakan untuk memberikan informasi file atau direkt
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `getattr` diimplementasikan sebagai berikut:
-```
+```c
 static int xmp_getattr(const char *path, struct stat *stbuf) {
-    int res;
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
-    res = lstat(fpath, stbuf);
-    if (res == -1)
-        return -errno;
+    char *fpath = fullpath(path, SOURCE_DIR);
+    if (fpath == NULL) return -ENOMEM;
+    int res = lstat(fpath, stbuf);
+    free(fpath);
+    if (res == -1) return -errno;
     return 0;
 }
 ```
@@ -88,28 +87,34 @@ Pendekatan ini efisien karena menggunakan sistem call standar `lstat()` langsung
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `readdir` diimplementasikan sebagai berikut:
-```
-static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
-                       off_t offset, struct fuse_file_info *fi,
-                       enum fuse_readdir_flags flags) {
-    DIR *dp;
-    struct dirent *de;
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+```c
+static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
 
-    dp = opendir(fpath);
-    if (dp == NULL)
+    char *fpath = fullpath(path, SOURCE_DIR);
+    if (fpath == NULL) return -ENOMEM;
+
+    DIR *dp = opendir(fpath);
+    if (dp == NULL) {
+        free(fpath);
         return -errno;
+    }
 
+    struct dirent *de;
     while ((de = readdir(dp)) != NULL) {
-        struct stat st = {0};
-        st.st_ino = de->d_ino;
-        st.st_mode = de->d_type << 12;
-        if (filler(buf, de->d_name, &st, 0, 0))
-            break;
+        if (strcmp(de->d_name, ".") == 0 || strcmp(de->d_name, "..") == 0) continue;
+        if (filler(buf, de->d_name, NULL, 0) != 0) {
+            closedir(dp);
+            free(fpath);
+            return -ENOMEM;
+        }
     }
 
     closedir(dp);
+    free(fpath);
+
+    logger("LIST", path, "mengakses directory");
     return 0;
 }
 ```
@@ -158,13 +163,16 @@ Fungsi `unlink` bertugas untuk menghapus file. Dalam sistem file berbasis FUSE, 
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `unlink` diimplementasikan sebagai berikut:
-```
+```c
 static int xmp_unlink(const char *path) {
-    char fpath[PATH_MAX];
-    fullpath(fpath, path);
+    char *fpath = fullpath(path, SOURCE_DIR);
+    if (fpath == NULL) return -ENOMEM;
+
     int res = unlink(fpath);
-    if (res == -1)
-        return -errno;
+    free(fpath);
+    if (res == -1) return -errno;
+
+    logger("DELETE", path, "menghapus file");
     return 0;
 }
 ```
