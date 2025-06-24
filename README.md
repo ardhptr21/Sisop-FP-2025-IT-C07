@@ -148,11 +148,36 @@ Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi
 
 **Teori**
 
-...
+Fungsi `truncate` digunakan untuk mengubah ukuran file. Jika ukuran diperkecil, data setelah batas baru akan dihapus; jika diperbesar, sistem file akan menambahkan byte kosong. Dalam sistem file berbasis FUSE, `truncate` termasuk dalam operasi metadata yang memerlukan sistem call dari kernel ke user space.
+
+Menurut jurnal FusionFS (Zhang, 2022), `truncate` adalah kandidat bagus untuk digabung dalam CISCOps (compound operations) untuk mengurangi overhead sistem call, karena ia mengubah struktur file secara langsung. Namun, dalam sistem FUSE konvensional, truncate tetap menimbulkan overhead karena membutuhkan beberapa lapis komunikasi user-kernel.
+
+Jurnal Vangoor (2017) dan ACM Transactions on Storage (2019) juga mencatat bahwa `truncate` bisa menyebabkan latensi tambahan terutama saat sistem file perlu melakukan sinkronisasi metadata dan invalidasi cache.
 
 **Solusi**
 
-...
+Pada file `fuselogger.c`, fungsi `truncate` diimplementasikan sebagai berikut:
+```c
+static int xmp_truncate(const char *path, off_t size) {
+    char *fpath = fullpath(path, SOURCE_DIR);
+    if (fpath == NULL) return -ENOMEM;
+
+    int res = truncate(fpath, size);
+    free(fpath);
+
+    if (res == -1) return -errno;
+
+    logger("EDIT", path, "mengubah file");
+
+    return 0;
+}
+```
+Penjelasan:
+- Membentuk path absolut dengan `fullpath()`.
+- Menjalankan `truncate()` langsung ke sistem file backend.
+- Jika gagal, error dikembalikan dengan `-errno`.
+- Melakukan pencatatan log aksi sebagai "EDIT" menggunakan fungsi `logger()`.
+Implementasi ini sederhana dan langsung, sesuai dengan pendekatan minimalis FUSE. Fungsi `truncate` bekerja efektif tanpa perlu membuka file descriptor atau caching khusus, meskipun overhead tetap ada dalam arsitektur FUSE tradisional.
 
 > Implementasi menghapus file - `unlink`
 
@@ -195,3 +220,5 @@ Vangoor, B. K. R., Tarasov, V., & Zadok, E. (2017). To FUSE or Not to FUSE: Perf
 Cho, K.-J., Choi, J., Kwon, H., & Kim, J.-S. (2024). RFUSE: Modernizing Userspace Filesystem Framework through Scalable Kernel-Userspace Communication. Proceedings of the 22nd USENIX Conference on File and Storage Technologies (FAST '24).
 
 Zhang, J., Ren, Y., & Kannan, S. (2022). FusionFS: Fusing I/O Operations using CISCOps in Firmware File Systems. Proceedings of the 20th USENIX Conference on File and Storage Technologies (FAST '22).
+
+Vangoor, B. K. R., Agarwal, P., Mathew, M., Ramachandran, A., Sivaraman, S., Tarasov, V., & Zadok, E. (2019). Performance and Resource Utilization of FUSE User-Space File Systems. ACM Transactions on Storage (TOS), 15(2), Article 15.
