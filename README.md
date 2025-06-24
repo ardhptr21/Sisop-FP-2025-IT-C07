@@ -56,9 +56,11 @@ Struktur folder:
 > Implementasi membaca _attribute_ file/directory - `getattr`
 
 **Teori**
+
 Fungsi `getattr` pada FUSE digunakan untuk memberikan informasi file atau direktori seperti izin akses, ukuran file, waktu modifikasi, dan kepemilikan. Pada FUSE, `getattr` akan diteruskan dari kernel ke daemon pengguna, lalu mengambil metadata dari file backend dan mengembalikkannya ke kernel. Menurut Vangoor (2017), fungsi `getattr` masuk ke kategori operasi metadata dan dapat menambah latensi karena harus menunggu respons dari daemon user-space.
 
 **Solusi**
+
 Pada file `fuselogger.c`, fungsi `getattr` diimplementasikan sebagai berikut:
 ```
 static int xmp_getattr(const char *path, struct stat *stbuf) {
@@ -80,9 +82,11 @@ Pendekatan ini efisien karena menggunakan sistem call standar `lstat()` langsung
 > Implementasi membaca _directory_ - `readdir`
 
 **Teori**
+
 `readdir` adalah fungsi yang membaca entri-entri dalam sebuah direktori. Dalam FUSE, proses ini diawali dengan kernel mengirim request ke daemon user-space, dan respons dikirim melalui buffer. Menurut Cho (2024), ini termasuk kategori operasi metadata dan dapat mengalami bottleneck karena overhead komunikasi user-kernel.
 
 **Solusi**
+
 Pada file `fuselogger.c`, fungsi `readdir` diimplementasikan sebagai berikut:
 ```
 static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
@@ -148,9 +152,11 @@ Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi
 > Implementasi menghapus file - `unlink`
 
 **Teori**
+
 Fungsi `unlink` bertugas untuk menghapus file. Dalam sistem file berbasis FUSE, operasi ini penting karena bisa melibatkan propagasi ke storage backend. Dalam jurnal FusionFS (Zhang, 2022), operasi penghapusan sederhana ini bisa dioptimalkan jika digabung dalam CISC operation, tapi dalam konteks FUSE biasa, overhead tetap ada.
 
 **Solusi**
+
 Pada file `fuselogger.c`, fungsi `unlink` diimplementasikan sebagai berikut:
 ```
 static int xmp_unlink(const char *path) {
