@@ -115,7 +115,9 @@ Struktur folder:
 
 ## Video Menjalankan Program
 
-![Akses video](./assets/demo.mp4)
+[Akses video](./assets/demo.mp4)
+
+https://github.com/user-attachments/assets/ee0e1e3f-8728-4cb7-81e2-b7122c9827d9
 
 ## Daftar Pustaka
 
