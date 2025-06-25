@@ -128,13 +128,13 @@ Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi
 
 **Teori**
 
-Pada filesystem berbasis FUSE, konsep membuka file menggunakapn `open()` system call dengan meneruskan permintaan ke file nyata. Setiap file yang sedang dibuka direpresentasikan oleh sebuah entri dalam tabel file terbuka pada sistem secara keseluruhan, yang menyimpan posisi saat ini dalam file serta cara akses yang digunakan (Sylberschatz, et al., 2011).
+Pada filesystem berbasis FUSE, konsep membuka file menggunakan `open()` system call dengan meneruskan permintaan ke file nyata. Setiap file yang sedang dibuka direpresentasikan oleh sebuah entri dalam tabel file terbuka pada sistem secara keseluruhan, yang menyimpan posisi saat ini dalam file serta cara akses yang digunakan (Sylberschatz, et al., 2011). Dalam FUSE, fungsi `open()` tidak membuka file seperti biasa, tapi hanya untuk menyiapkan descriptor dan validasi akses.
 
 Setelah file berhasil dibuka, untuk membaca sebuah file dimulai dari offset tertentu tanpa mengubah posisi baca internal file yang kemudian memperbarui read pointer (Sylberschatz, et al., 2011). Terakhir, file ditutup dengan fungsi `close()`
 
 **Solusi**
 
-Untuk membuka file pada `fuselogger.c`, fungsi `open` diimplementasikan sebagai berikut:
+Untuk membuka file, pada `fuselogger.c`, fungsi `open` diimplementasikan sebagai berikut:
 ```c
 static int xmp_open(const char *path, struct fuse_file_info *fi) {
     char *fpath = fullpath(path, SOURCE_DIR);
@@ -151,7 +151,11 @@ static int xmp_open(const char *path, struct fuse_file_info *fi) {
 }
 ```
 Penjelasan:
-
+- Membentuk path absolut dengan `fullpath()`
+- Membuka file dengan sistem call `open()`
+- Jika gagal membuka file, mengembalikan nilai ke `-errno`
+- Mempersiapkan descriptor `fi->fh = fd` untuk kemudian dipanggil di fungsi `write()` atau `read()`
+- Mencatat log aksi dengan `OPEN` menggunakan fungsi `logger()`
 
 Untuk membaca file, diimplementasikan dengan fungsi `read` sebagai berikut:
 ```c
@@ -163,7 +167,8 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset, stru
 }
 ```
 Penjelasan:
-
+- Membaca file menggunakan fungsi `pread()`
+- Jika gagal, mengembalikan nilai ke `-errno`
 
 Kemudian file ditutup dengan fungsi `release` yang diimplementasikan sebagai berikut:
 ```c
