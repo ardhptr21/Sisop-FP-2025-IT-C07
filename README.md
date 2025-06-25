@@ -319,9 +319,9 @@ Penjelasan:
 
 **Teori**
 
-Pada filesystem berbasis FUSE, konsep membuka file menggunakan `open()` system call dengan meneruskan permintaan ke file nyata. Setiap file yang sedang dibuka direpresentasikan oleh sebuah entri dalam tabel file terbuka pada sistem secara keseluruhan, yang menyimpan posisi saat ini dalam file serta cara akses yang digunakan (Sylberschatz, et al., 2011). Dalam FUSE, fungsi `open()` tidak membuka file seperti biasa, tapi hanya untuk menyiapkan descriptor dan validasi akses.
+Pada filesystem berbasis FUSE, konsep membuka file menggunakan `open()` system call dengan meneruskan permintaan ke file nyata. Setiap file yang sedang dibuka direpresentasikan oleh sebuah entri dalam tabel file terbuka pada sistem secara keseluruhan, yang menyimpan posisi saat ini dalam file serta cara akses yang digunakan (Sylberschatz, et al., 2011, p. 385). Dalam FUSE, fungsi `open()` tidak membuka file seperti biasa, tapi hanya untuk menyiapkan descriptor dan validasi akses.
 
-Setelah file berhasil dibuka, untuk membaca sebuah file dimulai dari offset tertentu tanpa mengubah posisi baca internal file yang kemudian memperbarui read pointer (Sylberschatz, et al., 2011). Terakhir, file ditutup dengan fungsi `close()`
+Setelah file berhasil dibuka, untuk membaca sebuah file dimulai dari offset tertentu tanpa mengubah posisi baca internal file yang kemudian memperbarui read pointer. Terakhir, file ditutup dengan fungsi `close()`. Implementasi `open()` dan `close()` akan lebih rumit ketika beberapa proses membuka file yang sama secara bersamaan (Sylberschatz, et al., 2011, p. 386).
 
 **Solusi**
 
@@ -378,12 +378,17 @@ static int xmp_release(const char *path, struct fuse_file_info *fi) {
 ```
 
 Penjelasan:
+- Mendeklarasikan descriptor
+- Jika descriptor lebih dari 0, menutup file
 
 > Implementasi membuat file - `create`, `write`
 
 **Teori**
+System call `creat()` membuat file kosong dengan nama yang ditentukan. File yang sudah dibuat akan ditambahkan ke struktur direktori dengan data yang teralokasikan. Yang kemudian fungsi `write()` siap untuk diimplementasikan di file tersebut (Sylberschatz, et al., 2011, p. 130).  
 
-...
+Konsep `write` file pada umumnya menyalin user buffer ke kernel buffer. Kemudian dikirim ke disk (Stallings, 2018, p. 559).  
+
+Dalam konteks FUSE, fungsi `create()` dan `write()` menghubungkan aksi user ke real file system. FUSE meneruskan path dan parameter ke user-space handler. 
 
 **Solusi**
 
@@ -402,9 +407,13 @@ static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi) 
     return 0;
 }
 ```
-
 Penjelasan:
+- Membentuk path absolut dengan `fullpath()`
+- Jika path tidak teralokasikan, mengembalikan nilai `-ENOMEM`
+- Membuat file dengan fungsi `creat()`
+- Melakukan pencatatan log dengan fungsi `logger()`, yang akan memunculkan `CREATE`
 
+Untuk fungsi `write` sebagai berikut:
 ```c
 static int xmp_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     int fd = fi->fh;
@@ -413,8 +422,9 @@ static int xmp_write(const char *path, const char *buf, size_t size, off_t offse
     return res;
 }
 ```
-
 Penjelasan:
+- Mendeklarasikan descriptor
+- Write data menggunakan fungsi `pwrite()`
 
 > Implementasi mengubah file - `truncate`
 
@@ -496,6 +506,8 @@ https://github.com/user-attachments/assets/ee0e1e3f-8728-4cb7-81e2-b7122c9827d9
 Cho, K.-J., Choi, J., Kwon, H., & Kim, J.-S. (2024). RFUSE: Modernizing Userspace Filesystem Framework through Scalable Kernel-Userspace Communication. Proceedings of the 22nd USENIX Conference on File and Storage Technologies (FAST '24).
 
 Silberschatz, A., Galvin, P. B., & Gagne, G. (2011). Operating system concepts essentials (8th ed.). John Wiley & Sons, Inc.
+
+Stallings, W. (2018). Operating Systems: Internals and Design Principles (9th ed.). Pearson.
 
 Vangoor, B. K. R., Agarwal, P., Mathew, M., Ramachandran, A., Sivaraman, S., Tarasov, V., & Zadok, E. (2019). Performance and Resource Utilization of FUSE User-Space File Systems. ACM Transactions on Storage (TOS), 15(2), Article 15.
 
