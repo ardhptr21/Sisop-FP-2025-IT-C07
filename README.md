@@ -37,21 +37,206 @@ Struktur folder:
 
 **Teori**
 
-...
+Dalam inisialasi ini adalah mempersiapkan hal - hal yang dibutuhkan untuk menjalankan dan juga membuat fuse. Untuk mempermudah dalam menjalankan fuse maka dibuat `Makefile` untuk meng-automasi hal - hal yang diperlukan dalam menjalankan fuse.
+
+Lalu untuk membuat kode program fuse sendiri disini menggunakan diperlukan `libfuse` yang nanti akan digunakan sebagai library dari kode `c`.
 
 **Solusi**
 
-...
+1. Makefile
+
+```make
+MAIN_FILE = fuselogger.c
+MAIN_OUTPUT = fuselogger
+
+FUSE_DIR = dist
+
+build:
+	@gcc -Wall $(MAIN_FILE) $(shell pkg-config fuse --cflags --libs) -o $(MAIN_OUTPUT)
+
+unmount:
+	@if mountpoint -q $(FUSE_DIR) 2>/dev/null; then \
+		fusermount -u $(FUSE_DIR); \
+	fi
+
+run: build unmount
+	@if [ ! -d "$(FUSE_DIR)" ]; then mkdir $(FUSE_DIR); fi
+	@./$(MAIN_OUTPUT) $(FUSE_DIR)
+```
+
+Penjelasan:
+
+1. `MAIN_FILE` dan `MAIN_OUTPUT` adalah inisialisasi variable sebagai input dan output executable fuse nya nanti.
+2. sub command `build` digunakan untuk mendefinisikan perintah - perintah untuk meng-compile kode `c` yang dibuat. yaitu dengan menjalankan perintah `@gcc -Wall $(MAIN_FILE) $(shell pkg-config fuse --cflags --libs) -o $(MAIN_OUTPUT)`
+3. sub command `unmount` digunakan untuk mendefinisikan perintah yang nantinya akan melakukan unmounting dari sebuah directory `fuse` jika directory tersebut memang sedang dalam keadaan mounting, untuk mengeceknya menggunakan if clause dan menggunakan perintah `mountpoint -q $(FUSE_DIR) 2>/dev/null` dan untuk melakukan unmounting menggunakan perintah `fusermount -u $(FUSE_DIR);`
+4. Terakhir sub command `run` memiliki dependencies command ke `build` dan `unmount` dimana artinya sebelum menjalankan semua hal yang ada di command `run` akan menjalankan semua hal yang menjadi dependencies command tersebut.
+
+5. Implementasi kode `c`
+
+```c
+#define _DEFAULT_SOURCE
+#define FUSE_USE_VERSION 28
+
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <fuse.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <unistd.h>
+
+char *fullpath(const char *path, const char *base);
+void logger(const char *action, const char *path, const char *details);
+
+static int xmp_getattr(const char *path, struct stat *stbuf);
+static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);
+static int xmp_open(const char *path, struct fuse_file_info *fi);
+static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi);
+static int xmp_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
+static int xmp_truncate(const char *path, off_t size);
+static int xmp_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
+static int xmp_release(const char *path, struct fuse_file_info *fi);
+static int xmp_unlink(const char *path);
+
+static struct fuse_operations xmp_oper = {
+    .getattr = xmp_getattr,
+    .readdir = xmp_readdir,
+    .open = xmp_open,
+    .read = xmp_read,
+    .create = xmp_create,
+    .write = xmp_write,
+    .truncate = xmp_truncate,
+    .release = xmp_release,
+    .unlink = xmp_unlink,
+};
+
+#define SOURCE_DIR "source"
+
+static char cwd[PATH_MAX];
+
+int main(int argc, char *argv[]) {
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("getcwd");
+        return EXIT_FAILURE;
+    }
+
+    char *fpath = fullpath("/", SOURCE_DIR);
+    if (fpath == NULL) {
+        perror("fullpath");
+        return EXIT_FAILURE;
+    }
+
+    if (access(fpath, F_OK) == -1) {
+        if (mkdir(fpath, 0755) == -1) {
+            perror("mkdir");
+            free(fpath);
+            return EXIT_FAILURE;
+        }
+    }
+    free(fpath);
+
+    umask(0);
+    return fuse_main(argc, argv, &xmp_oper, NULL);
+}
+```
+
+Penjelasan:
+
+1. Pada bagian `define` paling atas adalah untuk mendefinisikan versi `fuse` yang digunakan dan melakukan defining flag terhadap `_DEFAULT_SOURCE`
+2. Lalu bagian selanjutnya adalah melakukan `include` terhadap required library yang digunakan untuk menjalankan semua hal yang ada pada kode tersebut termasuk lib `fuse` nya.
+3. Selanjutnya adalah membuat placeholder function yang nantinya akan didefinisikan dan diimplementasikan nantinya, mulai dari placeholder utility function seperti `fullpath` dan `logger`, serta placeholder function untuk setiap `fuse` action yang ada, dan kemudian membuat `static struct fuse_operations` untuk melakukan setting terhadap action - action fuse yang ada.
+4. Melakukan `define` `SOURCE_DIR` yang digunakan untuk target relative path dari folder yang akan dimounting menjadi `fuse`.
+5. `static char cwd[PATH_MAX];` definisi variabel ini akan menyimpan current working directory dimana letak binary atau programnya dijalankan.
+6. Selanjutnya adalah function `main` sebagai gerbang untuk semua program yang dijalankan.
+7. Bagian kode yang ada didalem function `main` dibawah ini digunakan untuk melakukan global variabel `cwd` dan mengecek apakah folder target ada atau tidak.
+
+```c
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        perror("getcwd");
+        return EXIT_FAILURE;
+    }
+
+    char *fpath = fullpath("/", SOURCE_DIR);
+    if (fpath == NULL) {
+        perror("fullpath");
+        return EXIT_FAILURE;
+    }
+
+    if (access(fpath, F_OK) == -1) {
+        if (mkdir(fpath, 0755) == -1) {
+            perror("mkdir");
+            free(fpath);
+            return EXIT_FAILURE;
+        }
+    }
+    free(fpath);
+```
+
+8. `umask(0);` digunakan untuk file creation masking untuk melakukan set permission running process terhadap owning programnya.
+9. `return fuse_main(argc, argv, &xmp_oper, NULL);` Terakhir ini digunakan untuk mulai menjalankan `fuse` functionnya.
 
 > Pembuatan logger
 
 **Teori**
 
-...
+Teknik logging adalah teknik untuk mencoba melakukan output dari sebuah program kedalam sebuah `stdout`, logging biasanya digunakan untuk debugging atau bahkan untuk memberikan informasi tambahan atau mencatat sebuah informasi. Dalam program kali ini sesuai dengan deskripsi soal maka `stdout` yang digunakan adalah `file pointer` atau outputnya akan dimasukkan ke dalam sebuah file.
 
 **Solusi**
 
-...
+```c
+void logger(const char *action, const char *path, const char *details) {
+    char *fpath = fullpath("history.log", "");
+    FILE *fp = fopen(fpath, "a");
+    if (fp == NULL) return;
+
+    char time_str[32];
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+
+    if (details && strlen(details) > 0) {
+        fprintf(fp, "[%s] %s: %s - %s\n", time_str, action, path, details);
+    } else {
+        fprintf(fp, "[%s] %s: %s\n", time_str, action, path);
+    }
+
+    fclose(fp);
+}
+```
+
+Penjelasan:
+
+1. Function `logger` akan menerima 3 argument yaitu `action` untuk mendifinisikan action apa yang dilakukan (cont: EDIT, OPEN, dll), selanjutnya `path` digunakan untuk mencatat `path` apa yang sedang diakses karena dalam kasus ini logging yang dilakukan untuk melakukan tracking fuse operationnya, terakhir adalah `details` untuk memberikan informasi tambahan pada log tersebut.
+2. Bagian dibawah ini digunakan untuk membuka sebuah file atau membuat file pointer ke file `history.log`
+
+```c
+char *fpath = fullpath("history.log", "");
+FILE *fp = fopen(fpath, "a");
+if (fp == NULL) return;
+```
+
+3. Bagian dibawah ini digunakan untuk membuat timestamp format string.
+
+```c
+char time_str[32];
+time_t now = time(NULL);
+struct tm *tm_info = localtime(&now);
+strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", tm_info);
+```
+
+4. Selanjutnya bagian dibawah ini untuk mulai melakukan writing konten ke file yang dituju
+
+```c
+if (details && strlen(details) > 0) {
+    fprintf(fp, "[%s] %s: %s - %s\n", time_str, action, path, details);
+} else {
+    fprintf(fp, "[%s] %s: %s\n", time_str, action, path);
+}
+```
+
+5. `fclose(fp);` close file pointer.
 
 > Implementasi membaca _attribute_ file/directory - `getattr`
 
@@ -62,6 +247,7 @@ Fungsi `getattr` pada FUSE digunakan untuk memberikan informasi file atau direkt
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `getattr` diimplementasikan sebagai berikut:
+
 ```c
 static int xmp_getattr(const char *path, struct stat *stbuf) {
     char *fpath = fullpath(path, SOURCE_DIR);
@@ -72,11 +258,13 @@ static int xmp_getattr(const char *path, struct stat *stbuf) {
     return 0;
 }
 ```
+
 Penjelasan:
+
 - `fullpath(fpath, path)` digunakan untuk menyusun path absolut dari file.
 - `lstat()` mengambil metadata file atau direktori.
 - Jika gagal, kode akan mengembalikan `-errno` sebagai tanda error.
-Pendekatan ini efisien karena menggunakan sistem call standar `lstat()` langsung ke file sistem backend tanpa perubahan atau manipulasi metadata.
+  Pendekatan ini efisien karena menggunakan sistem call standar `lstat()` langsung ke file sistem backend tanpa perubahan atau manipulasi metadata.
 
 > Implementasi membaca _directory_ - `readdir`
 
@@ -87,6 +275,7 @@ Pendekatan ini efisien karena menggunakan sistem call standar `lstat()` langsung
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `readdir` diimplementasikan sebagai berikut:
+
 ```c
 static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi) {
     filler(buf, ".", NULL, 0);
@@ -118,11 +307,13 @@ static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_
     return 0;
 }
 ```
+
 Penjelasan:
+
 - Membuka direktori menggunakan `opendir`.
 - Membaca semua entri dengan `readdir`.
 - Mengisi buffer kernel menggunakan `filler()`.
-Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi tambahan, juga mengimplementasikan loop `readdir` secara efisien dan aman. 
+  Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi tambahan, juga mengimplementasikan loop `readdir` secara efisien dan aman.
 
 > Implementasi membuka dan membaca file - `open`, `read`, `release`
 
@@ -135,6 +326,7 @@ Setelah file berhasil dibuka, untuk membaca sebuah file dimulai dari offset tert
 **Solusi**
 
 Untuk membuka file, pada `fuselogger.c`, fungsi `open` diimplementasikan sebagai berikut:
+
 ```c
 static int xmp_open(const char *path, struct fuse_file_info *fi) {
     char *fpath = fullpath(path, SOURCE_DIR);
@@ -150,7 +342,9 @@ static int xmp_open(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 ```
+
 Penjelasan:
+
 - Membentuk path absolut dengan `fullpath()`
 - Membuka file dengan sistem call `open()`
 - Jika gagal membuka file, mengembalikan nilai ke `-errno`
@@ -158,6 +352,7 @@ Penjelasan:
 - Mencatat log aksi dengan `OPEN` menggunakan fungsi `logger()`
 
 Untuk membaca file, diimplementasikan dengan fungsi `read` sebagai berikut:
+
 ```c
 static int xmp_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
     int fd = fi->fh;
@@ -166,11 +361,14 @@ static int xmp_read(const char *path, char *buf, size_t size, off_t offset, stru
     return res;
 }
 ```
+
 Penjelasan:
+
 - Membaca file menggunakan fungsi `pread()`
 - Jika gagal, mengembalikan nilai ke `-errno`
 
 Kemudian file ditutup dengan fungsi `release` yang diimplementasikan sebagai berikut:
+
 ```c
 static int xmp_release(const char *path, struct fuse_file_info *fi) {
     int fd = fi->fh;
@@ -178,8 +376,8 @@ static int xmp_release(const char *path, struct fuse_file_info *fi) {
     return 0;
 }
 ```
-Penjelasan:
 
+Penjelasan:
 
 > Implementasi membuat file - `create`, `write`
 
@@ -204,8 +402,8 @@ static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi) 
     return 0;
 }
 ```
-Penjelasan:
 
+Penjelasan:
 
 ```c
 static int xmp_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
@@ -215,8 +413,8 @@ static int xmp_write(const char *path, const char *buf, size_t size, off_t offse
     return res;
 }
 ```
-Penjelasan:
 
+Penjelasan:
 
 > Implementasi mengubah file - `truncate`
 
@@ -231,6 +429,7 @@ Jurnal Vangoor (2017) dan ACM Transactions on Storage (2019) juga mencatat bahwa
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `truncate` diimplementasikan sebagai berikut:
+
 ```c
 static int xmp_truncate(const char *path, off_t size) {
     char *fpath = fullpath(path, SOURCE_DIR);
@@ -246,12 +445,14 @@ static int xmp_truncate(const char *path, off_t size) {
     return 0;
 }
 ```
+
 Penjelasan:
+
 - Membentuk path absolut dengan `fullpath()`.
 - Menjalankan `truncate()` langsung ke sistem file backend.
 - Jika gagal, error dikembalikan dengan `-errno`.
 - Melakukan pencatatan log aksi sebagai "EDIT" menggunakan fungsi `logger()`.
-Implementasi ini sederhana dan langsung, sesuai dengan pendekatan minimalis FUSE. Fungsi `truncate` bekerja efektif tanpa perlu membuka file descriptor atau caching khusus, meskipun overhead tetap ada dalam arsitektur FUSE tradisional.
+  Implementasi ini sederhana dan langsung, sesuai dengan pendekatan minimalis FUSE. Fungsi `truncate` bekerja efektif tanpa perlu membuka file descriptor atau caching khusus, meskipun overhead tetap ada dalam arsitektur FUSE tradisional.
 
 > Implementasi menghapus file - `unlink`
 
@@ -262,6 +463,7 @@ Fungsi `unlink` bertugas untuk menghapus file. Dalam sistem file berbasis FUSE, 
 **Solusi**
 
 Pada file `fuselogger.c`, fungsi `unlink` diimplementasikan sebagai berikut:
+
 ```c
 static int xmp_unlink(const char *path) {
     char *fpath = fullpath(path, SOURCE_DIR);
@@ -275,11 +477,13 @@ static int xmp_unlink(const char *path) {
     return 0;
 }
 ```
+
 Penjelasan:
+
 - Membentuk path absolut.
 - Menjalankan `unlink()` langsung ke sistem file backend.
 - Jika gagal, error dikembalikan.
-Ini implementasi paling sederhana dan langsung, serta sudah cukup efisien karena tidak memerlukan pemrosesan tambahan.
+  Ini implementasi paling sederhana dan langsung, serta sudah cukup efisien karena tidak memerlukan pemrosesan tambahan.
 
 ## Video Menjalankan Program
 
