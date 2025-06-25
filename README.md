@@ -122,17 +122,59 @@ Penjelasan:
 - Membuka direktori menggunakan `opendir`.
 - Membaca semua entri dengan `readdir`.
 - Mengisi buffer kernel menggunakan `filler()`.
-Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi tambahan, juga mengimplementasikan loop `readdir` secara efisien dan aman.
+Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi tambahan, juga mengimplementasikan loop `readdir` secara efisien dan aman. 
 
 > Implementasi membuka dan membaca file - `open`, `read`, `release`
 
 **Teori**
 
-...
+Pada filesystem berbasis FUSE, konsep membuka file menggunakapn `open()` system call dengan meneruskan permintaan ke file nyata. Setiap file yang sedang dibuka direpresentasikan oleh sebuah entri dalam tabel file terbuka pada sistem secara keseluruhan, yang menyimpan posisi saat ini dalam file serta cara akses yang digunakan (Sylberschatz, et al., 2011).
+
+Setelah file berhasil dibuka, untuk membaca sebuah file dimulai dari offset tertentu tanpa mengubah posisi baca internal file yang kemudian memperbarui read pointer (Sylberschatz, et al., 2011). Terakhir, file ditutup dengan fungsi `close()`
 
 **Solusi**
 
-...
+Untuk membuka file pada `fuselogger.c`, fungsi `open` diimplementasikan sebagai berikut:
+```c
+static int xmp_open(const char *path, struct fuse_file_info *fi) {
+    char *fpath = fullpath(path, SOURCE_DIR);
+    if (fpath == NULL) return -ENOMEM;
+
+    int fd = open(fpath, fi->flags);
+    free(fpath);
+
+    if (fd == -1) return -errno;
+    fi->fh = fd;
+
+    logger("OPEN", path, "membuka file");
+    return 0;
+}
+```
+Penjelasan:
+
+
+Untuk membaca file, diimplementasikan dengan fungsi `read` sebagai berikut:
+```c
+static int xmp_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    int fd = fi->fh;
+    int res = pread(fd, buf, size, offset);
+    if (res == -1) return -errno;
+    return res;
+}
+```
+Penjelasan:
+
+
+Kemudian file ditutup dengan fungsi `release` yang diimplementasikan sebagai berikut:
+```c
+static int xmp_release(const char *path, struct fuse_file_info *fi) {
+    int fd = fi->fh;
+    if (fd > 0) close(fd);
+    return 0;
+}
+```
+Penjelasan:
+
 
 > Implementasi membuat file - `create`, `write`
 
@@ -142,7 +184,34 @@ Metode ini mengikuti alur tipikal FUSE dan tidak menyimpan cache atau modifikasi
 
 **Solusi**
 
-...
+```c
+static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi) {
+    char *fpath = fullpath(path, SOURCE_DIR);
+    if (fpath == NULL) return -ENOMEM;
+
+    int fd = creat(fpath, mode);
+    free(fpath);
+
+    if (fd == -1) return -errno;
+    fi->fh = fd;
+
+    logger("CREATE", path, "membuat file baru");
+    return 0;
+}
+```
+Penjelasan:
+
+
+```c
+static int xmp_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi) {
+    int fd = fi->fh;
+    int res = pwrite(fd, buf, size, offset);
+    if (res == -1) return -errno;
+    return res;
+}
+```
+Penjelasan:
+
 
 > Implementasi mengubah file - `truncate`
 
@@ -215,10 +284,12 @@ https://github.com/user-attachments/assets/ee0e1e3f-8728-4cb7-81e2-b7122c9827d9
 
 ## Daftar Pustaka
 
-Vangoor, B. K. R., Tarasov, V., & Zadok, E. (2017). To FUSE or Not to FUSE: Performance of User-Space File Systems. Proceedings of the 15th USENIX Conference on File and Storage Technologies (FAST '17).
-
 Cho, K.-J., Choi, J., Kwon, H., & Kim, J.-S. (2024). RFUSE: Modernizing Userspace Filesystem Framework through Scalable Kernel-Userspace Communication. Proceedings of the 22nd USENIX Conference on File and Storage Technologies (FAST '24).
 
-Zhang, J., Ren, Y., & Kannan, S. (2022). FusionFS: Fusing I/O Operations using CISCOps in Firmware File Systems. Proceedings of the 20th USENIX Conference on File and Storage Technologies (FAST '22).
+Silberschatz, A., Galvin, P. B., & Gagne, G. (2011). Operating system concepts essentials (8th ed.). John Wiley & Sons, Inc.
 
 Vangoor, B. K. R., Agarwal, P., Mathew, M., Ramachandran, A., Sivaraman, S., Tarasov, V., & Zadok, E. (2019). Performance and Resource Utilization of FUSE User-Space File Systems. ACM Transactions on Storage (TOS), 15(2), Article 15.
+
+Vangoor, B. K. R., Tarasov, V., & Zadok, E. (2017). To FUSE or Not to FUSE: Performance of User-Space File Systems. Proceedings of the 15th USENIX Conference on File and Storage Technologies (FAST '17).
+
+Zhang, J., Ren, Y., & Kannan, S. (2022). FusionFS: Fusing I/O Operations using CISCOps in Firmware File Systems. Proceedings of the 20th USENIX Conference on File and Storage Technologies (FAST '22).
